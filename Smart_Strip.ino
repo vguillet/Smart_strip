@@ -13,22 +13,17 @@ decode_results results;
 // ---------------------------------------------------------- Strip initialisation
 // --> Define strip properties and connectic
 int LED_PIN = 51;
-int LED_COUNT = 10;
+int LED_COUNT = 60;
 
 // --> NeoPixel brightness, 0 (min) to 255 (max)
 int BRIGHTNESS = 25;
 int power = 0;
 
 uint32_t state = 0xFF38C7;
-int color_tracker = 255;
+int color_tracker = 60;
+int default_step_size = 20;
 
-int default_step_size = 40;
-int current_quadrant;
-int goal_edge;
-int step_size;
-int turn;
-
-// --> Setup remote code array
+// --> Initialte remote code array
 uint32_t controller_signals[17] = {0xFFE21D, // Off
                                    0xFFC23D, // On
                                    0xFFA25D, // Dim down
@@ -135,7 +130,7 @@ void applySignal(uint32_t hexSignal)
      // ------------------------------------------------- Set to Green
      else if (state == 0xFF9867 and power == 1){
        colorWipe(strip.Color(0,   255,   0)     , 50);
-       color_tracker = 120;
+       color_tracker = 20;
        }
 
      // ------------------------------------------------- Set to Blue
@@ -157,7 +152,7 @@ void applySignal(uint32_t hexSignal)
 
      // ------------------------------------------------- Move to wheel red
      else if (state == 0xFF30CF and power == 1){
-      color_tracker = color_tracker + step_towards_color(0); 
+      step_towards_color(0); 
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
@@ -165,8 +160,8 @@ void applySignal(uint32_t hexSignal)
       } 
      
      // ------------------------------------------------- Move to wheel yellow
-     else if (state == 0xFF30CF and power == 1){
-      color_tracker = color_tracker + step_towards_color(60); 
+     else if (state == 0xFF7A85 and power == 1){
+      step_towards_color(20); 
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
@@ -174,8 +169,8 @@ void applySignal(uint32_t hexSignal)
       }  
 
      // ------------------------------------------------- Move to wheel green
-     else if (state == 0xFF30CF and power == 1){
-      color_tracker = color_tracker + step_towards_color(120); 
+     else if (state == 0xFF52AD and power == 1){
+      step_towards_color(80); 
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
@@ -183,8 +178,8 @@ void applySignal(uint32_t hexSignal)
       }  
 
      // ------------------------------------------------- Move to wheel blue
-     else if (state == 0xFF30CF and power == 1){
-      color_tracker = color_tracker + step_towards_color(240); 
+     else if (state == 0xFF42BD and power == 1){
+      step_towards_color(170);
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
@@ -200,50 +195,83 @@ void applySignal(uint32_t hexSignal)
 
 
 void step_towards_color(int goal_color){
+  // --> Declare variables
+  int current_quadrant;
+  int goal_edge;
+  int step_size;
+  int turn;
+ 
   // --> Find current quadrant
-  if (0 < color_tracker =< 60){int current_quadrant = 1;}
-  else if (60 < color_tracker =< 120){int current_quadrant = 2;}
-  else if (120 < color_tracker =< 240){int current_quadrant = 3;}
-  else {int current_quadrant = 4;}
-
-  // --> Find edge goal
-  if (goal_color == 0){int goal_edge = 1;}
-  else if (goal_color == 60){int goal_edge = 2;}
-  else if (goal_color == 120){int goal_edge = 3;}
-  else {int goal_edge = 4;} 
-
-  // --> Find step size
-  if (current_quadrant == 1 or current_quadrant == 2){int step_size = default_step_size/2;}
-  else {int step_size = default_step_size;}
+  if (0 <= color_tracker && color_tracker <= 20){current_quadrant = 4;}
+  else if (20 < color_tracker && color_tracker <= 80){current_quadrant = 3;}
+  else if (80 < color_tracker && color_tracker < 170){current_quadrant = 2;}
+  else {current_quadrant = 1;}
   
+  // --> Find edge goal
+  if (goal_color == 0){goal_edge = 1;}
+  else if (goal_color == 20){goal_edge = 4;}
+  else if (goal_color == 80){goal_edge = 3;}
+  else {goal_edge = 2;} 
+ 
+  // --> Find step size
+  if (current_quadrant == 4){step_size = default_step_size/4;}
+  else if (current_quadrant == 3){step_size = default_step_size/2;}
+  else if (current_quadrant == 2){step_size = default_step_size;}
+  else {step_size = default_step_size;}
+    
   // --> Find turn direction
   if (goal_edge == 1){
-    if (current_quadrant == 1 or current_quadrant == 2){int turn = 0;}
-    else {int turn = 1;}
+    if (current_quadrant == 1 or current_quadrant == 2){turn = 0;}
+    else {turn = 1;}
     } 
   
   if (goal_edge == 2){
-    if (current_quadrant == 2 or current_quadrant == 3){int turn = 0;}
-    else {int turn = 1;}
+    if (current_quadrant == 2 or current_quadrant == 3){turn = 0;}
+    else {turn = 1;}
     } 
 
   if (goal_edge == 3){
-    if (current_quadrant == 3 or current_quadrant == 4){int turn = 0;}
-    else {int turn = 1;}
+    if (current_quadrant == 3 or current_quadrant == 4){turn = 0;}
+    else {turn = 1;}
     } 
 
   if (goal_edge == 4){
-    if (current_quadrant == 4 or current_quadrant == 1){int turn = 0;}
-    else {int turn = 1;}
+    if (current_quadrant == 4 or current_quadrant == 1){turn = 0;}
+    else {turn = 1;}
     } 
+
+  Serial.println(current_quadrant);
+  Serial.println(goal_edge);
+  Serial.println(turn);
   
   // --> Return (scaled) step size
   if (turn == 0){
-    if (color_tracker + step_size > goal_color){return goal_color - color_tracker;}
-    else {return step_size;} 
+    if (goal_color > color_tracker){
+      if (goal_color - color_tracker < step_size){step_size = goal_color - color_tracker;}
+      }
+      
+    else{
+      if (goal_color + (255 - color_tracker) < step_size){step_size = goal_color + (255 - color_tracker);}
+      }
     }
+    
   else{
-    if (color_tracker - step_size < goal_color){return -(color_tracker - goal_tracker);}
-    else {return - step_size;} 
+    if (goal_color < color_tracker){
+      if (color_tracker - goal_color < step_size){step_size = -(color_tracker - goal_color);}
+      else {step_size = -step_size;}
+      }
+
+    else {
+      if ((color_tracker + 255) - goal_color < step_size){step_size = -(color_tracker + 255) - goal_color;}
+      else {step_size = -step_size;}
+      }
     }
+    
+  // --> Apply step if not at goal
+  if (color_tracker != goal_color){color_tracker = color_tracker + step_size;}
+
+  // --> Loop if past 255 range
+  if (color_tracker > 255){color_tracker = color_tracker - 255;}
+  else if (color_tracker < 0){color_tracker = color_tracker + 255;}
+  
   }
