@@ -5,8 +5,9 @@
 
 #include <Adafruit_NeoPixel.h>
 
+// =========================================================================================== Intialisation
 // ---------------------------------------------------------- IR initialisation
-int RECV_PIN = 52;
+int RECV_PIN = 21;
 IRrecv irrecv(RECV_PIN);
 decode_results results;
 
@@ -16,7 +17,7 @@ int LED_PIN = 51;
 int LED_COUNT = 60;
 
 // --> NeoPixel brightness, 0 (min) to 255 (max)
-int BRIGHTNESS = 25;
+int BRIGHTNESS = 255;
 int power = 0;
 
 uint32_t state = 0xFF38C7;
@@ -46,7 +47,11 @@ uint32_t controller_signals[17] = {0xFFE21D, // Off
 // --> Declare NeoPixel strip object
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
-// ---------------------------------------------------------- Setup
+
+// ---------------------------------------------------------- Interrupt tracker initialisation
+int run_loop = 1;
+
+// =========================================================================================== Setup
 void setup()
 {
   // --> Initialise IR receiver
@@ -57,9 +62,12 @@ void setup()
   strip.begin();           // INITIALIZE NeoPixel strip object (REQUIRED)
   strip.show();            // Turn OFF all pixels ASAP
   strip.setBrightness(BRIGHTNESS); // Set BRIGHTNESS (max = 255)  
+
+  // --> Setup interrupt
+  attachInterrupt(digitalPinToInterrupt(21), adjustState, CHANGE);
 }
 
-// ---------------------------------------------------------- Run
+// =========================================================================================== Run
 void loop()
 {
   if (irrecv.decode(&results)){
@@ -76,8 +84,17 @@ void loop()
      Serial.print("\n"); 
      irrecv.resume(); // Receive the next value
      }
+  run_loop = 1; // Reset run_loop 
 }
 
+// =========================================================================================== Define interrupts
+void adjustState(){
+//  Serial.println("Interrupt!");
+  run_loop = 0;
+  } 
+
+
+// =========================================================================================== Define of functions
 void applySignal(uint32_t hexSignal) 
   {
      // ----------------------------------------- Control on/off state, brightness
@@ -117,25 +134,25 @@ void applySignal(uint32_t hexSignal)
         
      // ------------------------------------------------- Set to white
      if (state == 0xFF38C7 and power == 1){
-       colorWipe(strip.Color(0, 0, 0, 255)  , 50);
+       colorWipe(strip.Color(0, 0, 0, 255)  , 40);
 //       color = 
        }
       
      // ------------------------------------------------- Set to Red
      else if (state == 0xFF6897 and power == 1){
-       colorWipe(strip.Color(255, 0, 0)  , 50);
+       colorWipe(strip.Color(255, 0, 0)  , 40);
        color_tracker = 0;
        }
 
      // ------------------------------------------------- Set to Green
      else if (state == 0xFF9867 and power == 1){
-       colorWipe(strip.Color(0,   255,   0)     , 50);
+       colorWipe(strip.Color(0,   255,   0)     , 40);
        color_tracker = 20;
        }
 
      // ------------------------------------------------- Set to Blue
      else if (state == 0xFFB04F and power == 1){
-       colorWipe(strip.Color(0,   0,   255)     , 50);
+       colorWipe(strip.Color(0,   0,   255)     , 40);
        color_tracker = 240;
        }
 
@@ -188,11 +205,37 @@ void applySignal(uint32_t hexSignal)
 
        
 //     Serial.println(power);
+     Serial.print("Internal state: "); 
      Serial.println(state, HEX);
+     
+     Serial.print("Color tracker: ");
      Serial.println(color_tracker);
+     
+     Serial.print("Brightness: ");
+     Serial.println(BRIGHTNESS);
    }
 
 
+void rainbowCycle(uint8_t wait) {
+  uint16_t i, j;
+  
+  while(run_loop){
+    Serial.println(run_loop);
+    for(j=0; j<256; j++) { // 5 cycles of all colors on wheel
+      
+      if (run_loop == 0){break;} // Break out if new signal
+      
+      else{
+        for(i=0; i< strip.numPixels(); i++) {
+          strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+          }
+        }
+        
+    strip.show();
+    delay(wait);
+    }
+  }
+}
 
 void step_towards_color(int goal_color){
   // --> Declare variables
@@ -239,10 +282,6 @@ void step_towards_color(int goal_color){
     if (current_quadrant == 4 or current_quadrant == 1){turn = 0;}
     else {turn = 1;}
     } 
-
-  Serial.println(current_quadrant);
-  Serial.println(goal_edge);
-  Serial.println(turn);
   
   // --> Return (scaled) step size
   if (turn == 0){
