@@ -18,7 +18,6 @@ int LED_COUNT = 60;
 
 // --> NeoPixel brightness, 0 (min) to 255 (max)
 int BRIGHTNESS = 255;
-int power = 0;
 
 uint32_t  hexSignal = 0xFFE21D;
 uint32_t state = 0xFF38C7;
@@ -50,8 +49,8 @@ Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 
 // ---------------------------------------------------------- Interrupt tracker initialisation
-int run_loop = 1;
-int hold_lock = 0;
+boolean run_loop = true;
+boolean hold_lock = false;
 
 // =========================================================================================== Setup
 void setup()
@@ -98,7 +97,7 @@ void loop()
 //     irrecv.resume(); // Receive the next value
 //     }
      
-  run_loop = 1; // Reset run_loop  
+  run_loop = true; // Reset run_loop  
 }
 
 // =========================================================================================== Define interrupts
@@ -107,9 +106,9 @@ void adjustState(){
     Serial.println(results.value, HEX);
   
     for (int i=0; i < 17; i++){
-          if (controller_signals[i] == results.value or hold_lock == 1){
+          if (controller_signals[i] == results.value or hold_lock == true){
             hexSignal = results.value;
-            run_loop = 0;
+            run_loop = false;
             break;
             }
           }
@@ -147,14 +146,14 @@ void applySignal()
       strip.fill(strip.Color(0, 0, 0, 0));
       strip.show();
 
-      hold(1);
+      hold("Off");
       } 
 
      // ------------------------------------------------- Set to white
      else if (state == 0xFF38C7){
       colorWipe(strip.Color(0, 0, 0, 255)  , 40);
 
-      hold(2);
+      hold("White");
       }
       
      // ------------------------------------------------- Set to Red
@@ -162,7 +161,7 @@ void applySignal()
       colorWipe(strip.Color(255, 0, 0)  , 40);
       color_tracker = 0;
 
-      hold(3);
+      hold("Red");
       }
 
      // ------------------------------------------------- Set to Green
@@ -170,7 +169,7 @@ void applySignal()
       colorWipe(strip.Color(0,   255,   0)     , 40);
       color_tracker = 20;
 
-      hold(4);
+      hold("Green");
       }
 
      // ------------------------------------------------- Set to Blue
@@ -178,7 +177,7 @@ void applySignal()
       colorWipe(strip.Color(0,   0,   255)     , 40);
       color_tracker = 240;
 
-      hold(5);
+      hold("Blue");
       }
 
      // ------------------------------------------------- Set to color cycle
@@ -193,7 +192,34 @@ void applySignal()
       theaterChaseRainbow(50);
       run_loop = 1;
       } 
+ 
+     // ------------------------------------------------- Move to fav 1
+     else if (state == 0xFFE01F){
+      // -- > Apply new color
+      strip.fill(Wheel(color_tracker));
+      strip.show();
 
+      hold("Fav 1");
+      } 
+
+     // ------------------------------------------------- Move to fav 2
+     else if (state == 0xFFA857){   
+      // -- > Apply new color
+      strip.fill(Wheel(color_tracker));
+      strip.show();
+
+      hold("Fav 2");
+      } 
+
+     // ------------------------------------------------- Move to clock
+     else if (state == 0xFF906F){
+      // -- > Apply new color
+      strip.fill(Wheel(color_tracker));
+      strip.show();
+
+      hold("Timer");
+      } 
+         
      // ------------------------------------------------- Move to wheel red
      else if (state == 0xFF30CF){
       step_towards_color(0); 
@@ -202,7 +228,7 @@ void applySignal()
       strip.fill(Wheel(color_tracker));
       strip.show();
 
-      hold(6);
+      hold("Wheel red");
       } 
      
      // ------------------------------------------------- Move to wheel yellow
@@ -213,7 +239,7 @@ void applySignal()
       strip.fill(Wheel(color_tracker));
       strip.show();
 
-      hold(7);
+      hold("Wheel yellow");
       }  
 
      // ------------------------------------------------- Move to wheel green
@@ -224,7 +250,7 @@ void applySignal()
       strip.fill(Wheel(color_tracker));
       strip.show();
 
-      hold(8);
+      hold("Wheel green");
       }  
 
      // ------------------------------------------------- Move to wheel blue
@@ -235,21 +261,21 @@ void applySignal()
       strip.fill(Wheel(color_tracker));
       strip.show();
 
-      hold(9);
+      hold("Wheel blue");
       }
 
-     // ------------------------------------------------- Hold
+     // ------------------------------------------------- Hold to catch all unwanted signal
      else {
-      hold_lock = 1;
-      hold(10);
-      hold_lock = 0;
+      hold_lock = true;
+      hold("Hold lock");
+      hold_lock = false;
       }
    }  
 
 // =========================================================================================== Def state modifiers
-void hold(int tracker){
+void hold(String tracker){
   while(run_loop){
-//    Serial.println(tracker);   // Add tracker to see what holds
+    Serial.println(tracker);   // Add tracker to see what holds
     delay(0);
     }
   run_loop = 1;
@@ -346,7 +372,7 @@ void rainbowCycle(uint8_t wait) {
   uint16_t i, j;
   
   while(run_loop){
-    Serial.println(run_loop);
+    Serial.println("Color cycle");   // Add tracker to see what holds
     for(j=0; j<256; j++) { // Cycles of all colors on wheel
       
       if (run_loop == 0){break;} // Break out if new signal
