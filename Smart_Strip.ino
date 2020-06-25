@@ -20,6 +20,7 @@ int LED_COUNT = 60;
 int BRIGHTNESS = 255;
 int power = 0;
 
+uint32_t  hexSignal = 0xFFE21D;
 uint32_t state = 0xFF38C7;
 int color_tracker = 60;
 int default_step_size = 20;
@@ -50,6 +51,7 @@ Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 // ---------------------------------------------------------- Interrupt tracker initialisation
 int run_loop = 1;
+int hold_lock = 0;
 
 // =========================================================================================== Setup
 void setup()
@@ -70,48 +72,59 @@ void setup()
 // =========================================================================================== Run
 void loop()
 {
-  if (irrecv.decode(&results)){
-     Serial.println(results.value, HEX);
-
-     // --> Check whether signal should be processed
-     for (int i=0; i < 17; i++){
-        if (controller_signals[i] == results.value){
-          applySignal(results.value);
-          break;
-          }
-        }
-        
-     Serial.print("\n"); 
-     irrecv.resume(); // Receive the next value
-     }
-  run_loop = 1; // Reset run_loop 
+ applySignal();
+ 
+//  if (irrecv.decode(&results)){
+//     Serial.println(results.value, HEX);
+//
+//     // --> Check whether signal should be processed
+//     for (int i=0; i < 17; i++){
+//        if (controller_signals[i] == results.value){
+//          applySignal();
+//          break;
+//          }
+//        }
+//
+//       //     Serial.println(power);
+//     Serial.print("Internal state: "); 
+//     Serial.println(state, HEX);
+//     
+//     Serial.print("Color tracker: ");
+//     Serial.println(color_tracker);
+//     
+//     Serial.print("Brightness: ");
+//     Serial.println(BRIGHTNESS);   
+//     Serial.print("\n"); 
+//     irrecv.resume(); // Receive the next value
+//     }
+     
+  run_loop = 1; // Reset run_loop  
 }
 
 // =========================================================================================== Define interrupts
 void adjustState(){
-//  Serial.println("Interrupt!");
-  run_loop = 0;
+  if (irrecv.decode(&results)){
+    Serial.println(results.value, HEX);
+  
+    for (int i=0; i < 17; i++){
+          if (controller_signals[i] == results.value or hold_lock == 1){
+            hexSignal = results.value;
+            run_loop = 0;
+            break;
+            }
+          }
+    Serial.println(hexSignal, HEX);
+    Serial.print("\n");
+    irrecv.resume(); // Receive the next value
+    }
   } 
 
-
 // =========================================================================================== Define of functions
-void applySignal(uint32_t hexSignal) 
+void applySignal() 
   {
-     // ----------------------------------------- Control on/off state, brightness
-     // --> Turn off led 
-     if (hexSignal == 0xFFE21D){
-        strip.fill(strip.Color(0, 0, 0, 0));
-        strip.show();
-        power = 0;
-        }
-
-     // --> Turn on strip/apply state 
-     else if (hexSignal == 0xFFC23D){
-        power = 1;
-        }
-        
+     // ----------------------------------------- Brightness      
      // --> Set dim down
-     else if (hexSignal == 0xFFA25D and power == 1){
+     if (hexSignal == 0xFFA25D){
        if (BRIGHTNESS > 0){
          BRIGHTNESS = BRIGHTNESS - 25;
          strip.setBrightness(BRIGHTNESS);
@@ -119,123 +132,137 @@ void applySignal(uint32_t hexSignal)
        }
 
      // --> Set dim up
-     else if (hexSignal == 0xFF629D and power == 1){
+     else if (hexSignal == 0xFF629D){
        if (BRIGHTNESS <= 230){
          BRIGHTNESS = BRIGHTNESS + 25;
          strip.setBrightness(BRIGHTNESS);
          }
-       
        }
 
-     // --> Set new state 
-     else if (power == 1){
-       state = hexSignal; 
-       } 
-        
+     // --> Set state
+     setState(hexSignal); 
+     
+     // ------------------------------------------------- Turn off led 
+     if (hexSignal == 0xFFE21D){
+      strip.fill(strip.Color(0, 0, 0, 0));
+      strip.show();
+
+      hold(1);
+      } 
+
      // ------------------------------------------------- Set to white
-     if (state == 0xFF38C7 and power == 1){
-       colorWipe(strip.Color(0, 0, 0, 255)  , 40);
-//       color = 
-       }
+     else if (state == 0xFF38C7){
+      colorWipe(strip.Color(0, 0, 0, 255)  , 40);
+
+      hold(2);
+      }
       
      // ------------------------------------------------- Set to Red
-     else if (state == 0xFF6897 and power == 1){
-       colorWipe(strip.Color(255, 0, 0)  , 40);
-       color_tracker = 0;
-       }
+     else if (state == 0xFF6897){
+      colorWipe(strip.Color(255, 0, 0)  , 40);
+      color_tracker = 0;
+
+      hold(3);
+      }
 
      // ------------------------------------------------- Set to Green
-     else if (state == 0xFF9867 and power == 1){
-       colorWipe(strip.Color(0,   255,   0)     , 40);
-       color_tracker = 20;
-       }
+     else if (state == 0xFF9867){
+      colorWipe(strip.Color(0,   255,   0)     , 40);
+      color_tracker = 20;
+
+      hold(4);
+      }
 
      // ------------------------------------------------- Set to Blue
-     else if (state == 0xFFB04F and power == 1){
-       colorWipe(strip.Color(0,   0,   255)     , 40);
-       color_tracker = 240;
-       }
+     else if (state == 0xFFB04F){
+      colorWipe(strip.Color(0,   0,   255)     , 40);
+      color_tracker = 240;
+
+      hold(5);
+      }
 
      // ------------------------------------------------- Set to color cycle
-     else if (state == 0xFF02FD and power == 1){
-       rainbowCycle(20);
-       }     
+     else if (state == 0xFF02FD){
+      rainbowCycle(20);
+      run_loop = 1;
+      }     
 
      // ------------------------------------------------- Set to color mash
-     else if (state == 0xFF22DD and power == 1){
-//       theaterChase(strip.Color(127, 127, 127), 50); // White
-       theaterChaseRainbow(50);
-       } 
+     else if (state == 0xFF22DD){
+//    theaterChase(strip.Color(127, 127, 127), 50); // White
+      theaterChaseRainbow(50);
+      run_loop = 1;
+      } 
 
      // ------------------------------------------------- Move to wheel red
-     else if (state == 0xFF30CF and power == 1){
+     else if (state == 0xFF30CF){
       step_towards_color(0); 
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
       strip.show();
+
+      hold(6);
       } 
      
      // ------------------------------------------------- Move to wheel yellow
-     else if (state == 0xFF7A85 and power == 1){
+     else if (state == 0xFF7A85){
       step_towards_color(20); 
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
       strip.show();
+
+      hold(7);
       }  
 
      // ------------------------------------------------- Move to wheel green
-     else if (state == 0xFF52AD and power == 1){
+     else if (state == 0xFF52AD){
       step_towards_color(80); 
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
       strip.show();
+
+      hold(8);
       }  
 
      // ------------------------------------------------- Move to wheel blue
-     else if (state == 0xFF42BD and power == 1){
+     else if (state == 0xFF42BD){
       step_towards_color(170);
      
       // -- > Apply new color
       strip.fill(Wheel(color_tracker));
       strip.show();
-      } 
 
-       
-//     Serial.println(power);
-     Serial.print("Internal state: "); 
-     Serial.println(state, HEX);
-     
-     Serial.print("Color tracker: ");
-     Serial.println(color_tracker);
-     
-     Serial.print("Brightness: ");
-     Serial.println(BRIGHTNESS);
-   }
+      hold(9);
+      }
 
+     // ------------------------------------------------- Hold
+     else {
+      hold_lock = 1;
+      hold(10);
+      hold_lock = 0;
+      }
+   }  
 
-void rainbowCycle(uint8_t wait) {
-  uint16_t i, j;
-  
+// =========================================================================================== Def state modifiers
+void hold(int tracker){
   while(run_loop){
-    Serial.println(run_loop);
-    for(j=0; j<256; j++) { // 5 cycles of all colors on wheel
-      
-      if (run_loop == 0){break;} // Break out if new signal
-      
-      else{
-        for(i=0; i< strip.numPixels(); i++) {
-          strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
-          }
-        }
-        
-    strip.show();
-    delay(wait);
+//    Serial.println(tracker);   // Add tracker to see what holds
+    delay(0);
     }
+  run_loop = 1;
   }
-}
+  
+void setState(uint32_t hexSignal){
+   if (hexSignal != 0xFFE21D   // Off
+  and hexSignal != 0xFFC23D    // On
+  and hexSignal != 0xFFA25D    // Dim down
+  and hexSignal != 0xFF629D    // Dim up
+  and hexSignal != 0
+  ){state = hexSignal;}
+  }
 
 void step_towards_color(int goal_color){
   // --> Declare variables
@@ -314,3 +341,24 @@ void step_towards_color(int goal_color){
   else if (color_tracker < 0){color_tracker = color_tracker + 255;}
   
   }
+
+void rainbowCycle(uint8_t wait) {
+  uint16_t i, j;
+  
+  while(run_loop){
+    Serial.println(run_loop);
+    for(j=0; j<256; j++) { // Cycles of all colors on wheel
+      
+      if (run_loop == 0){break;} // Break out if new signal
+      
+      else{
+        for(i=0; i< strip.numPixels(); i++) {
+          strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+          }
+        }
+        
+    strip.show();
+    delay(wait);
+    }
+  }
+}
