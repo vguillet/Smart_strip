@@ -47,6 +47,19 @@ uint32_t controller_signals[17] = {0xFFE21D, // Off
 // --> Declare NeoPixel strip object
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
+// ---------------------------------------------------------- Setup serial output trackers
+// --> Initialise serial signal receiver
+//String receivedString = "0,0,0";
+const byte numChars = 32;
+char receivedChars[numChars];
+char tempChars[numChars];        // temporary array for use when parsing
+
+boolean newData = false;
+
+// --> Initiate rgb trackers
+int r;
+int g;
+int b;
 
 // ---------------------------------------------------------- Interrupt tracker initialisation
 boolean run_loop = true;
@@ -55,8 +68,10 @@ boolean hold_lock = false;
 // =========================================================================================== Setup
 void setup()
 {
+  // --> Initialise serial
+  Serial.begin(9600);
+  
   // --> Initialise IR receiver
-  Serial.begin(9600); // Initialise serial to monitor ir signals
   irrecv.enableIRIn(); // Start the receiver
   
   // --> Initialise NeoPixel strip object
@@ -71,39 +86,16 @@ void setup()
 // =========================================================================================== Run
 void loop()
 {
- applySignal();
- 
-//  if (irrecv.decode(&results)){
-//     Serial.println(results.value, HEX);
-//
-//     // --> Check whether signal should be processed
-//     for (int i=0; i < 17; i++){
-//        if (controller_signals[i] == results.value){
-//          applySignal();
-//          break;
-//          }
-//        }
-//
-//       //     Serial.println(power);
-//     Serial.print("Internal state: "); 
-//     Serial.println(state, HEX);
-//     
-//     Serial.print("Color tracker: ");
-//     Serial.println(color_tracker);
-//     
-//     Serial.print("Brightness: ");
-//     Serial.println(BRIGHTNESS);   
-//     Serial.print("\n"); 
-//     irrecv.resume(); // Receive the next value
-//     }
-     
-  run_loop = true; // Reset run_loop  
+// Serial.println(results.value, HEX);
+ Serial.println(1);
+ applySignal();     
+ run_loop = true; // Reset run_loop  
 }
 
 // =========================================================================================== Define interrupts
 void adjustState(){
   if (irrecv.decode(&results)){
-    Serial.println(results.value, HEX);
+//    Serial.println(results.value, HEX);
   
     for (int i=0; i < 17; i++){
           if (controller_signals[i] == results.value or hold_lock == true){
@@ -112,8 +104,6 @@ void adjustState(){
             break;
             }
           }
-    Serial.println(hexSignal, HEX);
-    Serial.print("\n");
     irrecv.resume(); // Receive the next value
     }
   } 
@@ -151,7 +141,7 @@ void applySignal()
 
      // ------------------------------------------------- Set to white
      else if (state == 0xFF38C7){
-      colorWipe(strip.Color(0, 0, 0, 255)  , 40);
+      colorWipe(strip.Color(0,0,0,255)  , 40);
 
       hold("White");
       }
@@ -182,42 +172,71 @@ void applySignal()
 
      // ------------------------------------------------- Set to color cycle
      else if (state == 0xFF02FD){
-      rainbowCycle(20);
-      run_loop = 1;
+//      rainbowCycle(20);
+        uint16_t i, j;
+  
+        while(run_loop){
+          for(j=0; j<256; j++) { // Cycles of all colors on wheel     
+            if (run_loop == false){
+              break;
+              } // Break out if new signal
+           
+            else{
+              for(i=0; i< strip.numPixels(); i++) {
+                strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+                }
+              }
+              
+          strip.show();
+          delay(20);
+          }
+        }
       }     
 
      // ------------------------------------------------- Set to color mash
      else if (state == 0xFF22DD){
 //    theaterChase(strip.Color(127, 127, 127), 50); // White
       theaterChaseRainbow(50);
-      run_loop = 1;
       } 
  
-     // ------------------------------------------------- Move to fav 1
+     // ------------------------------------------------- Set to fav 1
      else if (state == 0xFFE01F){
-      // -- > Apply new color
+      // --> Apply new color
       strip.fill(Wheel(color_tracker));
       strip.show();
 
       hold("Fav 1");
       } 
 
-     // ------------------------------------------------- Move to fav 2
+     // ------------------------------------------------- Set to fav 2
      else if (state == 0xFFA857){   
-      // -- > Apply new color
+      // --> Apply new color
       strip.fill(Wheel(color_tracker));
       strip.show();
 
       hold("Fav 2");
       } 
 
-     // ------------------------------------------------- Move to clock
+     // ------------------------------------------------- Set to timer
      else if (state == 0xFF906F){
-      // -- > Apply new color
-      strip.fill(Wheel(color_tracker));
-      strip.show();
+      
+      recvWithStartEndMarkers();
 
-      hold("Timer");
+      if (newData == true) {
+        // --> Parse data
+        strcpy(tempChars, receivedChars);
+        parseData(); // this temporary copy is necessary to protect the original data because strtok() used in parseData() replaces the commas with \0
+
+//        showParsedData();
+          
+        // --> Apply color to strip
+        strip.fill(strip.Color(r, g, b));
+        strip.show();
+        newData = false;
+        }
+      
+      // --> Clear Serial cache     
+      while(Serial.available()){Serial.read();}
       } 
          
      // ------------------------------------------------- Move to wheel red
@@ -275,10 +294,9 @@ void applySignal()
 // =========================================================================================== Def state modifiers
 void hold(String tracker){
   while(run_loop){
-    Serial.println(tracker);   // Add tracker to see what holds
+//    Serial.println(tracker);   // Add tracker to see what holds
     delay(0);
     }
-  run_loop = 1;
   }
   
 void setState(uint32_t hexSignal){
@@ -368,23 +386,21 @@ void step_towards_color(int goal_color){
   
   }
 
-void rainbowCycle(uint8_t wait) {
-  uint16_t i, j;
-  
-  while(run_loop){
-    Serial.println("Color cycle");   // Add tracker to see what holds
-    for(j=0; j<256; j++) { // Cycles of all colors on wheel
-      
-      if (run_loop == 0){break;} // Break out if new signal
-      
-      else{
-        for(i=0; i< strip.numPixels(); i++) {
-          strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
-          }
-        }
-        
-    strip.show();
-    delay(wait);
-    }
-  }
-}
+//void rainbowCycle(uint8_t wait) {
+//  uint16_t i, j;
+//  
+//  while(run_loop){
+//    for(j=0; j<256; j++) { // Cycles of all colors on wheel     
+//      if (run_loop == false){break;} // Break out if new signal
+//     
+//      else{
+//        for(i=0; i< strip.numPixels(); i++) {
+//          strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+//          }
+//        }
+//        
+//    strip.show();
+//    delay(wait);
+//    }
+//  }
+//}
